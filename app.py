@@ -8,5 +8,5 @@ st.write("Upload an Excel file")
 file = st.file_uploader("Choose file", type=["xlsx"])
 
 if file:
-df = pd.read_excel(file)
-st.dataframe(df)
+    df = pd.read_excel(file)
+    st.dataframe(df)
