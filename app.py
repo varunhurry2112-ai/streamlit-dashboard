@@ -1,106 +1,111 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 
-st.set_page_config(layout="wide")
-st.title("Paradis Beachcomber Rooms Dashboard")
+st.set_page_config(page_title="Paradis Beachcomber Rooms Dashboard", layout="wide")
 
-# ---- VIEW SELECTOR (GMR / GSS) ----
+# ===============================
+# TITLE
+# ===============================
+st.title("🏨 Paradis Beachcomber Rooms Dashboard")
+
+# ===============================
+# VIEW SELECTOR
+# ===============================
 view = st.radio("Select View", ["GMR", "GSS"], horizontal=True)
 
-if view == "GMR":
+if view == "GSS":
+    st.warning("GSS view will be configured later.")
+    st.stop()
 
-    st.subheader("GMR View")
+# ===============================
+# FILE UPLOADERS
+# ===============================
+gmr_file = st.file_uploader("Upload GMR Excel File", type=["xlsx"])
+room_plan_file = st.file_uploader("Upload Room Plan Excel File", type=["xlsx"])
 
-    uploaded_file = st.file_uploader(
-        "Upload GMR Excel file (any month)",
-        type=["xlsx"],
-        key="gmr_upload"
+if not gmr_file or not room_plan_file:
+    st.info("Please upload BOTH GMR file and Room Plan file.")
+    st.stop()
+
+# ===============================
+# LOAD ROOM PLAN (EXACT VALUES)
+# ===============================
+room_plan_df = pd.read_excel(room_plan_file, header=None)
+
+rooms = (
+    room_plan_df
+    .values
+    .astype(str)
+    .flatten()
+)
+
+rooms = [r.strip() for r in rooms if r.strip().lower() not in ["nan", ""]]
+
+# ===============================
+# LOAD GMR FILE
+# ===============================
+gmr_excel = pd.ExcelFile(gmr_file)
+
+selected_day = st.selectbox("Select Day (Sheet)", gmr_excel.sheet_names)
+
+gmr_df = pd.read_excel(gmr_excel, sheet_name=selected_day)
+
+# ===============================
+# STATUS COLUMN DETECTION
+# ===============================
+room_col = "RM"
+
+status_col = None
+for col in gmr_df.columns:
+    if "status" in col.lower():
+        status_col = col
+
+if room_col is None:
+    st.error("No ROOM column found in GMR file.")
+    st.stop()
+
+# ===============================
+# ROOM GRID DISPLAY
+# ===============================
+st.subheader(f"📅 GMR View — {selected_day}")
+
+cols = st.columns(10)
+
+selected_room = None
+
+for idx, room in enumerate(rooms):
+    col = cols[idx % 10]
+
+    room_data = gmr_df[gmr_df[room_col].astype(str) == room]
+
+    color = "#d3d3d3"
+
+    if not room_data.empty and status_col:
+        status = str(room_data.iloc[0][status_col]).lower()
+        if "pending" in status:
+            color = "#ffbf00"   # amber
+        elif "close" in status:
+            color = "#4CAF50"   # green
+
+    if col.button(room, key=room):
+        selected_room = room
+
+    col.markdown(
+        f"""
+        <div style="height:10px; background-color:{color}; border-radius:5px;"></div>
+        """,
+        unsafe_allow_html=True
     )
 
-    if uploaded_file:
+# ===============================
+# ROOM DETAILS
+# ===============================
+if selected_room:
+    st.subheader(f"🛏️ Room Details — {selected_room}")
+    room_details = gmr_df[gmr_df[room_col].astype(str) == selected_room]
 
-        # Read all sheets
-        xls = pd.ExcelFile(uploaded_file)
-        sheet_names = xls.sheet_names
-
-        selected_sheet = st.selectbox(
-            "Select Date (Sheet)",
-            sheet_names
-        )
-
-        gmr_df = pd.read_excel(xls, sheet_name=selected_sheet)
-
-        # Use EXACT column names from your file
-        room_col = "RM"
-
-        status_col = None
-        for col in gmr_df.columns:
-            if "status" in col.lower():
-                status_col = col
-
-        if status_col is None:
-            st.error("No STATUS column found in GMR file.")
-            st.stop()
-
-        # Room plan
-        room_plan = pd.read_excel("Room plan.xlsx")
-        rooms = room_plan.iloc[:, 0].astype(str).tolist()
-
-        st.markdown("### Rooms")
-
-        cols = st.columns(10)
-        col_index = 0
-
-        for room in rooms:
-            room_data = gmr_df[gmr_df[room_col].astype(str) == str(room)]
-
-            if not room_data.empty:
-                status = str(room_data.iloc[0][status_col]).lower()
-            else:
-                status = "unknown"
-
-            if "pending" in status:
-                color = "#FFC107"  # amber
-            elif "close" in status or "closed" in status:
-                color = "#4CAF50"  # green
-            else:
-                color = "#E0E0E0"  # grey
-
-            with cols[col_index]:
-                if st.button(room, key=f"room_{room}"):
-                    st.session_state["selected_room"] = room
-
-                st.markdown(
-                    f"""
-                    <div style="
-                        background-color:{color};
-                        height:10px;
-                        border-radius:5px;
-                        margin-bottom:10px;">
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-            col_index += 1
-            if col_index == 10:
-                cols = st.columns(10)
-                col_index = 0
-
-        if "selected_room" in st.session_state:
-            st.markdown("---")
-            st.subheader(f"Room Details: {st.session_state['selected_room']}")
-
-            details = gmr_df[
-                gmr_df[room_col].astype(str) == str(st.session_state["selected_room"])
-            ]
-
-            st.dataframe(details)
-
+    if room_details.empty:
+        st.warning("No data available for this room.")
     else:
-        st.info("Please upload a GMR Excel file to begin.")
-
-else:
-    st.info("GSS view will be added next.")
-
-
+        st.dataframe(room_details, use_container_width=True)
